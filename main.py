@@ -283,27 +283,36 @@ class MowerTimerApp:
         解析日志内容获取下次任务时间
         假设日志中有类似格式: "休息 12 分钟，到15:16:53开始工作"
         或者格式: "休息 1 小时 4 分钟，到16:47:18开始工作"
+        或者格式: "等待跑单 XX.X 秒"
         """
+        all_times = []
+        
+        # 查找"等待跑单 XX.X 秒"格式
+        pattern_wait_mowing = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ .*?: 等待跑单 (\d+\.?\d*) 秒"
+        matches_wait_mowing = re.findall(pattern_wait_mowing, log_content)
+        
+        for timestamp_str, seconds_str in matches_wait_mowing:
+            try:
+                # 解析时间戳
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                # 添加等待的秒数得到下次任务时间
+                next_time = timestamp + timedelta(seconds=float(seconds_str))
+                all_times.append(next_time)
+            except ValueError:
+                pass
+        
         # 查找带日期时间戳的"休息 X 小时 Y 分钟，到HH:MM:SS开始工作"格式
         pattern_timestamped = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ .*?: 休息 \d+ 小时 \d+ 分钟，到(\d{2}:\d{2}:\d{2})开始工作"
         matches_timestamped = re.findall(pattern_timestamped, log_content)
         
-        if matches_timestamped:
-            # 取最后一个匹配项（最新的时间）
-            timestamp_str, time_str = matches_timestamped[-1]
+        for timestamp_str, time_str in matches_timestamped:
             try:
                 # 解析时间戳中的日期
                 timestamp_date = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").date()
                 # 组合日期和时间
                 next_time = datetime.strptime(time_str, "%H:%M:%S").time()
                 next_datetime = datetime.combine(timestamp_date, next_time)
-                
-                # 如果解析出的时间已经过去，则加一天
-                now = datetime.now()
-                """if next_datetime <= now:
-                    next_datetime += timedelta(days=1)"""
-                    
-                return next_datetime
+                all_times.append(next_datetime)
             except ValueError:
                 pass
         
@@ -311,24 +320,20 @@ class MowerTimerApp:
         pattern_timestamped_min = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ .*?: 休息 \d+ 分钟，到(\d{2}:\d{2}:\d{2})开始工作"
         matches_timestamped_min = re.findall(pattern_timestamped_min, log_content)
         
-        if matches_timestamped_min:
-            # 取最后一个匹配项（最新的时间）
-            timestamp_str, time_str = matches_timestamped_min[-1]
+        for timestamp_str, time_str in matches_timestamped_min:
             try:
                 # 解析时间戳中的日期
                 timestamp_date = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").date()
                 # 组合日期和时间
                 next_time = datetime.strptime(time_str, "%H:%M:%S").time()
                 next_datetime = datetime.combine(timestamp_date, next_time)
-                
-                # 如果解析出的时间已经过去，则加一天
-                now = datetime.now()
-                """if next_datetime <= now:
-                    next_datetime += timedelta(days=1)"""
-                    
-                return next_datetime
+                all_times.append(next_datetime)
             except ValueError:
                 pass
+        
+        # 返回所有找到的时间中最晚的一个（最新的时间）
+        if all_times:
+            return max(all_times)
         
         return None
 
@@ -364,16 +369,47 @@ class MowerTimerApp:
         else:
             now = datetime.now()
             if self.next_mowing_time > now:
-                # 计算剩余时间
-                diff = self.next_mowing_time - now
-                days = diff.days
-                hours, remainder = divmod(diff.seconds, 3600)
-                minutes, seconds = divmod(remainder, 60)
+                # 检查是否来自"等待跑单"的日志
+                log_content = ""
+                try:
+                    with open(self.config['log_file_path'], 'r', encoding='utf-8') as f:
+                        log_content = f.read()
+                except Exception:
+                    pass
                 
-                if days > 0:
-                    display_text = f"{days}天 {hours:02d}:{minutes:02d}:{seconds:02d}后开始运行"
-                else:
-                    display_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}后开始运行"
+                # 检查是否存在最近的"等待跑单"日志条目
+                pattern_wait_mowing = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ .*?: 等待跑单 (\d+\.?\d*) 秒"
+                matches_wait_mowing = re.findall(pattern_wait_mowing, log_content)
+                
+                is_waiting_mowing = False
+                if matches_wait_mowing:
+                    # 取最后一个匹配项（最新的时间）
+                    timestamp_str, seconds_str = matches_wait_mowing[-1]
+                    try:
+                        # 解析时间戳
+                        log_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                        # 检查该日志是否是当前有效的倒计时来源
+                        next_time = log_time + timedelta(seconds=float(seconds_str))
+                        if abs((next_time - self.next_mowing_time).total_seconds()) < 1:
+                            is_waiting_mowing = True
+                            # 显示剩余秒数
+                            diff_seconds = (self.next_mowing_time - now).total_seconds()
+                            display_text = f"跑单中……还有{int(diff_seconds)}秒"
+                    except ValueError:
+                        pass
+                
+                # 如果不是"等待跑单"的情况，则使用原有显示方式
+                if not is_waiting_mowing:
+                    # 计算剩余时间
+                    diff = self.next_mowing_time - now
+                    days = diff.days
+                    hours, remainder = divmod(diff.seconds, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    
+                    if days > 0:
+                        display_text = f"{days}天 {hours:02d}:{minutes:02d}:{seconds:02d}后开始运行"
+                    else:
+                        display_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}后开始运行"
             else:
                 # 如果已经过了计划时间，则显示运行中，并立即重新读取日志
                 display_text = "运行中..."
