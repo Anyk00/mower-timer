@@ -394,7 +394,7 @@ class MowerTimerApp:
                             is_waiting_mowing = True
                             # 显示剩余秒数
                             diff_seconds = (self.next_mowing_time - now).total_seconds()
-                            display_text = f"跑单中……还有{int(diff_seconds)}秒"
+                            display_text = f"跑单中……剩余{int(diff_seconds)}秒"
                     except ValueError:
                         pass
                 
