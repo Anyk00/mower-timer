@@ -308,10 +308,12 @@ class MowerTimerApp:
         for timestamp_str, time_str in matches_timestamped:
             try:
                 # 解析时间戳中的日期
-                timestamp_date = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").date()
+                timestamp_datetime = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
                 # 组合日期和时间
                 next_time = datetime.strptime(time_str, "%H:%M:%S").time()
-                next_datetime = datetime.combine(timestamp_date, next_time)
+                next_datetime = datetime.combine(timestamp_datetime.date(), next_time)
+                if next_datetime < timestamp_datetime:
+                    next_datetime = next_datetime + timedelta(days=1)
                 all_times.append(next_datetime)
             except ValueError:
                 pass
@@ -323,10 +325,12 @@ class MowerTimerApp:
         for timestamp_str, time_str in matches_timestamped_min:
             try:
                 # 解析时间戳中的日期
-                timestamp_date = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").date()
+                timestamp_datetime = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
                 # 组合日期和时间
                 next_time = datetime.strptime(time_str, "%H:%M:%S").time()
-                next_datetime = datetime.combine(timestamp_date, next_time)
+                next_datetime = datetime.combine(timestamp_datetime.date(), next_time)
+                if next_datetime < timestamp_datetime:
+                    next_datetime = next_datetime + timedelta(days=1)
                 all_times.append(next_datetime)
             except ValueError:
                 pass
